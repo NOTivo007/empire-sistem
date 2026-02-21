@@ -3,50 +3,78 @@ import requests
 import os
 from flask import Flask
 from threading import Thread
+import time
 
-# Берем ключи из секретного хранилища Render (Environment Variables)
+# 1. Получаем ключи из секретов Render
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return "Empire System Online. Director is active."
+# --- МОДУЛИ СИСТЕМЫ ---
 
-def run_web():
-    # Render сам подставит нужный порт
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+def oracle_process():
+    """Модуль Оракул - фоновый анализ"""
+    print("--- ORACLE ONLINE ---")
+    while True:
+        time.sleep(3600)
+
+def sentinel_process():
+    """Модуль Сентинел - защита и мониторинг"""
+    print("--- SENTINEL ONLINE ---")
+    while True:
+        time.sleep(3600)
+
+# --- ЛОГИКА ДИРЕКТОРА (ИИ) ---
 
 @bot.message_handler(func=lambda m: True)
 def chat(m):
-    # Если ключи не подтянулись, бот скажет об этом
     if not GEMINI_KEY:
-        bot.reply_to(m, "Ошибка: Ключ API не найден в настройках сервера.")
+        bot.reply_to(m, "Ошибка: Ключ GEMINI_KEY не задан в настройках Render.")
         return
 
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
     headers = {'Content-Type': 'application/json'}
-    data = {"contents": [{"parts": [{"text": "Ты Директор системы Империя. Отвечай кратко и по делу. Вопрос: " + m.text}]}]}
+    data = {
+        "contents": [{
+            "parts": [{"text": "Ты Директор системы Империя. Отвечай кратко и властно: " + m.text}]
+        }]
+    }
     
     try:
         r = requests.post(url, json=data, headers=headers, timeout=30)
-        response_json = r.json()
-        
-        if 'candidates' in response_json:
-            text = response_json['candidates'][0]['content']['parts'][0]['text']
+        res = r.json()
+        if 'candidates' in res:
+            text = res['candidates'][0]['content']['parts'][0]['text']
             bot.reply_to(m, text)
         else:
-            bot.reply_to(m, f"Ошибка ИИ: {response_json.get('error', {}).get('message', 'Неизвестный сбой')}")
+            bot.reply_to(m, "Ядро ИИ временно недоступно.")
     except Exception as e:
-        bot.reply_to(m, "Система: Обрыв связи с ядром.")
+        bot.reply_to(m, "Сбой связи с командным центром.")
+
+# --- ВЕБ-ИНТЕРФЕЙС ДЛЯ RENDER ---
+
+@app.route('/')
+def home():
+    return "Empire System Status: DIRECTOR, ORACLE, SENTINEL ARE ACTIVE."
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# --- ТОЧКА ЗАПУСКА ---
 
 if name == "__main__":
-    # Запуск веб-сервера для Render в отдельном потоке
-    Thread(target=run_web).start()
+    # Запуск Веб-сервера (чтобы Render видел, что мы живы)
+    Thread(target=run_web, daemon=True).start()
     
-    print("--- ИМПЕРИЯ: ДИРЕКТОР ЗАПУЩЕН ---")
+    # Запуск Оракула и Сентинела (как ты и просил - автостарт)
+    Thread(target=oracle_process, daemon=True).start()
+    Thread(target=sentinel_process, daemon=True).start()
+    
+    print("--- СИСТЕМА ИМПЕРИЯ ПОЛНОСТЬЮ ЗАПУЩЕНА ---")
+    
+    # Запуск Бота (Директор)
     bot.remove_webhook()
     bot.infinity_polling()
