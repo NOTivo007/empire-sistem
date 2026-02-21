@@ -1,61 +1,37 @@
-import telebot, requests, os, time
+import telebot
+import os
+import google.generativeai as genai
 from flask import Flask
 from threading import Thread
 
-# Забираем токены из настроек Render
+# Настройка ключей
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 G_KEY = os.environ.get("GEMINI_KEY")
+
+# Инициализация Google AI
+genai.configure(api_key=G_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 @bot.message_handler(func=lambda m: True)
 def answer(m):
-    # ВЕРСИЯ V1 (Стабильная)
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={G_KEY}"
-    
-    payload = {
-        "contents": [{"parts": [{"text": m.text}]}]
-    }
-    
     try:
-        response = requests.post(url, json=payload, timeout=25)
-        data = response.json()
-        
-        # Проверка структуры ответа
-        if "candidates" in data and len(data["candidates"]) > 0:
-            candidate = data["candidates"][0]
-            if "content" in candidate and "parts" in candidate["content"]:
-                reply = candidate["content"]["parts"][0]["text"]
-                bot.reply_to(m, reply)
-            else:
-                bot.reply_to(m, "Ядро ИИ выдало пустой результат.")
-        else:
-            # Если опять ошибка - бот напишет её текст из JSON
-            error_info = data.get('error', {}).get('message', 'Неизвестная ошибка API')
-            bot.reply_to(m, f"Google Error: {error_info}")
-            
+        # Официальный метод генерации
+        response = model.generate_content(m.text)
+        bot.reply_to(m, response.text)
     except Exception as e:
-        bot.reply_to(m, f"Критический сбой: {str(e)}")
+        # Выводим реальную причину, чтобы понять, в VPN ли дело
+        bot.reply_to(m, f"Ошибка доступа: {str(e)}")
 
 @app.route('/')
-def home():
-    return "Empire Online - All Systems Operational"
+def home(): return "Empire System Live"
 
 def run():
-    # Порт для Render
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
-# ПРЯМОЙ ЗАПУСК БЕЗ IF NAME == MAIN (чтобы не было ошибок с 'name')
-print("--- STARTING EMPIRE CORE ---")
+# Старт
 Thread(target=run, daemon=True).start()
-
-# Автозапуск дополнительных модулей (Oracle и Sentinel)
-def background_modules():
-    print("--- ORACLE & SENTINEL ACTIVE ---")
-    while True: time.sleep(3600)
-Thread(target=background_modules, daemon=True).start()
-
 bot.remove_webhook()
-bot.infinity_polling(timeout=20, long_polling_timeout=10)
+bot.infinity_polling()
