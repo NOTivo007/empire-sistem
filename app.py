@@ -44,4 +44,4 @@ def answer(m):
 if __name__ == "__main__":
     Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     print("--- ИМПЕРИЯ ПЫТАЕТСЯ ПРОРВАТЬСЯ ---")
-    bot.infinity_polling()
+    bot.infinity_
