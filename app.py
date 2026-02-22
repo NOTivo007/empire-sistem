@@ -1,47 +1,42 @@
 import telebot
 import os
 import google.generativeai as genai
-from flask import Flask
-from threading import Thread
-import time
+from flask import Flask, request
 
-# Настройка прокси (пробуем обмануть регион)
-# Если у тебя есть свой прокси, вставь его сюда. 
-# Если нет — пробуем через системные настройки Render.
-os.environ['https_proxy'] = 'http://proxy.server:3128' # Это пример, ниже сделаем без прокси, но с подменой заголовков
-
+# Данные из Environment
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 G_KEY = os.environ.get("GEMINI_KEY")
+RENDER_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}"
 
-# Настройка Gemini с принудительным обходом
+# Настройка ИИ
 genai.configure(api_key=G_KEY)
-# Используем самую простую модель, она реже блокируется
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
+@app.route('/' + TOKEN, methods=['POST'])
+def getMessage():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "!", 200
+
 @app.route('/')
-def health(): return "SYSTEM IS LIVE", 200
+def webhook():
+    bot.remove_webhook()
+    # Установка нового вебхука на твой URL Render
+    bot.set_webhook(url=RENDER_URL + '/' + TOKEN)
+    return "WEBHOOK SET", 200
 
 @bot.message_handler(func=lambda m: True)
 def answer(m):
-    print(f"Приказ: {m.text}")
+    print(f"ПОЛУЧЕНО: {m.text}")
     try:
-        # Пытаемся вызвать модель
-        response = model.generate_content(f"Ты Директор. Ответь Клименту: {m.text}")
+        response = model.generate_content(f"Ты Директор Системы. Ответь: {m.text}")
         bot.reply_to(m, response.text)
     except Exception as e:
-        error_str = str(e)
-        print(f"Ошибка региона/доступа: {error_str}")
-        
-        # Если блокировка продолжается, даем Клименту знать
-        if "403" in error_str or "location" in error_str.lower() or "404" in error_str:
-            bot.reply_to(m, "❌ Google блокирует доступ по региону IP сервера Render. Попробуй сменить регион сервера на Frankfurt в настройках Render (Settings -> Region).")
-        else:
-            bot.reply_to(m, f"Технический сбой: {error_str[:50]}")
+        bot.reply_to(m, f"Ошибка ИИ: {str(e)[:50]}")
 
 if __name__ == "__main__":
-    Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-    print("--- ИМПЕРИЯ ПЫТАЕТСЯ ПРОРВАТЬСЯ ---")
-    bot.infinity_
+    app.run(host="0.0.0.0", port=10000)
